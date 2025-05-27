@@ -5,6 +5,8 @@
   <hr width="50%"/>
 </div>
 
+⚠️ This project is for learning and communication purposes only. Commercial or illegal use is strictly prohibited.
+
 A high-performance, automated Wechat bill parser that supports automatic password cracking of compressed files and intelligent extraction of bill data. Ideal for scenarios such as bill analysis, automated bookkeeping, and personal finance tool development.
 
 ---
