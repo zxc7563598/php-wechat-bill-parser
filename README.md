@@ -9,7 +9,7 @@
 
 A high-performance, automated Wechat bill parser that supports automatic password cracking of compressed files and intelligent extraction of bill data. Ideal for scenarios such as bill analysis, automated bookkeeping, and personal finance tool development.
 
-**This project has been parsed by Zread. If you need a quick overview of the project, you can click on the number of views to view it：[Understand this project](https://zread.ai/zxc7563598/php-wechat-bill-parser)**
+**This project has been parsed by Zread. If you need a quick overview of the project, you can click here to view it：[Understand this project](https://zread.ai/zxc7563598/php-wechat-bill-parser)**
 
 ---
 
