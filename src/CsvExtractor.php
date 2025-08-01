@@ -2,6 +2,8 @@
 
 namespace Hejunjie\WechatBillParser;
 
+use PhpOffice\PhpSpreadsheet\IOFactory;
+
 class CsvExtractor
 {
 
@@ -11,62 +13,64 @@ class CsvExtractor
         if ($zip->open($zipPath) !== true) {
             throw new \RuntimeException("无法打开ZIP文件: $zipPath");
         }
-        // 设置密码
         if (!$zip->setPassword($password)) {
             $zip->close();
             throw new \RuntimeException("ZIP密码设置失败");
         }
-        // 获取第一个文件名（假设只有一个CSV文件）
         if ($zip->numFiles < 1) {
             $zip->close();
             throw new \RuntimeException("ZIP中无文件");
         }
-        $filename = $zip->getNameIndex(1);
-        // 临时目录
+        $filename = null;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if (preg_match('/\.xlsx?$/i', $name)) {
+                $filename = $name;
+                break;
+            }
+        }
+        if (!$filename) {
+            $zip->close();
+            throw new \RuntimeException("ZIP中没有找到 Excel 文件");
+        }
         $tempDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'zip_extract_' . uniqid();
         if (!mkdir($tempDir, 0700) && !is_dir($tempDir)) {
             $zip->close();
             throw new \RuntimeException("创建临时目录失败: $tempDir");
         }
-        // 解压第一个文件到临时目录
         if (!$zip->extractTo($tempDir, $filename)) {
             $zip->close();
             $this->deleteDir($tempDir);
             throw new \RuntimeException("解压失败");
         }
         $zip->close();
-        $csvPath = $tempDir . DIRECTORY_SEPARATOR . $filename;
-        if (!file_exists($csvPath)) {
+        $excelPath = $tempDir . DIRECTORY_SEPARATOR . $filename;
+        if (!file_exists($excelPath)) {
             $this->deleteDir($tempDir);
-            throw new \RuntimeException("解压文件不存在: $csvPath");
+            throw new \RuntimeException("解压文件不存在: $excelPath");
         }
-        // 读取CSV内容到数组
+        $spreadsheet = IOFactory::load($excelPath);
+        $sheet = $spreadsheet->getActiveSheet();
         $rows = [];
-        $real_name = '';
         $account = '';
-        if (($handle = fopen($csvPath, 'r')) !== false) {
-            $lineNumber = 0;
-            while (($data = fgetcsv($handle)) !== false) {
-                $lineNumber++;
-                if ($lineNumber < 18) {
-                    switch ($lineNumber) {
-                        case 2:
-                            $account = $data[0];
-                            $account = str_replace('微信昵称：', '', $account);
-                            $account = str_replace('[', '', $account);
-                            $account = str_replace(']', '', $account);
-                            break;
-                    }
-                    continue;
-                }
-                $rows[] = $data;
+        $real_name = '';
+        $lineNumber = 0;
+        foreach ($sheet->getRowIterator() as $row) {
+            $lineNumber++;
+            $cellIterator = $row->getCellIterator();
+            $cellIterator->setIterateOnlyExistingCells(false);
+            $data = [];
+            foreach ($cellIterator as $cell) {
+                $data[] = trim((string) $cell->getValue());
             }
-            fclose($handle);
-        } else {
-            $this->deleteDir($tempDir);
-            throw new \RuntimeException("打开CSV文件失败");
+            if ($lineNumber < 18) {
+                if ($lineNumber === 2) {
+                    $account = str_replace(['微信昵称：', '[', ']'], '', $data[0]);
+                }
+                continue;
+            }
+            $rows[] = $data;
         }
-        // 删除临时文件和目录
         $this->deleteDir($tempDir);
         return [
             'real_name' => $real_name,
