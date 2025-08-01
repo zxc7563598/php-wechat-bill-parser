@@ -14,7 +14,7 @@ class Installer
         $source = __DIR__ . '/../bin/zip_bruteforce.c';
         $output = __DIR__ . '/../resources/zip_bruteforce';
         if (!file_exists($output)) {
-            $cmd = "gcc " . escapeshellarg($source) . " -o " . escapeshellarg($output) . " $(pkg-config --cflags --libs libzip) -lpthread 2>&1";
+            $cmd = "gcc " . escapeshellarg($source) . " -o " . escapeshellarg($output) . " $(pkg-config --cflags --libs libzip) -L/usr/local/lib -lpthread 2>&1";
             exec($cmd, $out, $code);
         }
     }
