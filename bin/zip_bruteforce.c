@@ -1,80 +1,61 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/wait.h>
 #include <zip.h>
 
 #define PASSWORD_LENGTH 6
-#define THREAD_COUNT 4
+#define PROCESS_COUNT 4
+#define TEST_READ_BYTES 16 // 只读取前16字节
 
-typedef struct {
-    const char* zip_path;
-    int start;
-    int end;
-    int thread_id;
-} ThreadData;
+int try_password(const char* zip_path, const char* password) {
+    int err = 0;
+    zip_t* za = zip_open(zip_path, 0, &err);
+    if (!za) return 0;
 
-volatile int found = 0;
-char found_password[PASSWORD_LENGTH + 1];
-pthread_mutex_t lock;
-
-int try_password(zip_t* za, const char* password) {
     if (zip_set_default_password(za, password) < 0) {
+        zip_close(za);
         return 0;
     }
+
     zip_int64_t num_entries = zip_get_num_entries(za, 0);
     int success = 0;
+
     for (zip_uint64_t i = 0; i < num_entries; i++) {
         struct zip_stat st;
         if (zip_stat_index(za, i, 0, &st) != 0 || st.size == 0) continue;
+
         zip_file_t* zf = zip_fopen_index(za, i, 0);
         if (!zf) continue;
-        char* buffer = malloc(st.size);
-        if (!buffer) {
-            zip_fclose(zf);
-            continue;
-        }
-        zip_int64_t total_read = zip_fread(zf, buffer, st.size);
-        free(buffer);
+
+        char buffer[TEST_READ_BYTES];
+        zip_int64_t total_read = zip_fread(zf, buffer, sizeof(buffer));
         zip_fclose(zf);
-        if (total_read == st.size) {
+
+        if (total_read > 0) { // 成功读到数据
             success = 1;
             break;
         }
     }
+
+    zip_close(za);
     return success;
 }
 
-void* worker(void* arg) {
-    ThreadData* data = (ThreadData*)arg;
+void crack_range(const char* zip_path, int start, int end, int pipe_fd) {
     char password[PASSWORD_LENGTH + 1];
     password[PASSWORD_LENGTH] = '\0';
-    int err = 0;
-    zip_t* za = zip_open(data->zip_path, 0, &err);
-    if (!za) {
-        fprintf(stderr, "线程 %d 无法打开ZIP文件\n", data->thread_id);
-        return NULL;
-    }
-    for (int i = data->start; i <= data->end; i++) {
-        pthread_mutex_lock(&lock);
-        if (found) {
-            pthread_mutex_unlock(&lock);
-            break;
-        }
-        pthread_mutex_unlock(&lock);
-        snprintf(password, PASSWORD_LENGTH + 1, "%06d", i);
-        if (try_password(za, password)) {
-            pthread_mutex_lock(&lock);
-            if (!found) {
-                found = 1;
-                strcpy(found_password, password);
-            }
-            pthread_mutex_unlock(&lock);
-            break;
+
+    for (int i = start; i <= end; i++) {
+        snprintf(password, sizeof(password), "%06d", i);
+        if (try_password(zip_path, password)) {
+            write(pipe_fd, password, PASSWORD_LENGTH);
+            exit(0);
         }
     }
-    zip_close(za);
-    return NULL;
+    exit(1);
 }
 
 int main(int argc, char* argv[]) {
@@ -82,26 +63,54 @@ int main(int argc, char* argv[]) {
         printf("用法: %s zip文件路径\n", argv[0]);
         return 1;
     }
+
     const char* zip_path = argv[1];
-    pthread_t threads[THREAD_COUNT];
-    ThreadData thread_data[THREAD_COUNT];
-    pthread_mutex_init(&lock, NULL);
-    int range_per_thread = 1000000 / THREAD_COUNT;
-    for (int i = 0; i < THREAD_COUNT; i++) {
-        thread_data[i].zip_path = zip_path;
-        thread_data[i].start = i * range_per_thread;
-        thread_data[i].end = (i == THREAD_COUNT - 1) ? 999999 : (thread_data[i].start + range_per_thread - 1);
-        thread_data[i].thread_id = i + 1;
-        pthread_create(&threads[i], NULL, worker, &thread_data[i]);
+    int range_per_proc = 1000000 / PROCESS_COUNT;
+    int pipefd[2];
+
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        return 1;
     }
-    for (int i = 0; i < THREAD_COUNT; i++) {
-        pthread_join(threads[i], NULL);
+
+    pid_t pids[PROCESS_COUNT];
+
+    for (int i = 0; i < PROCESS_COUNT; i++) {
+        int start = i * range_per_proc;
+        int end = (i == PROCESS_COUNT - 1) ? 999999 : (start + range_per_proc - 1);
+
+        pid_t pid = fork();
+        if (pid < 0) {
+            perror("fork");
+            return 1;
+        } else if (pid == 0) {
+            close(pipefd[0]); // 子进程关闭读端
+            crack_range(zip_path, start, end, pipefd[1]);
+        } else {
+            pids[i] = pid;
+        }
     }
-    if (found) {
+
+    close(pipefd[1]); // 父进程关闭写端
+
+    char found_password[PASSWORD_LENGTH + 1] = {0};
+    int n = read(pipefd[0], found_password, PASSWORD_LENGTH);
+    if (n > 0) {
+        found_password[PASSWORD_LENGTH] = '\0';
         printf("%s\n", found_password);
-        return 0;
+
+        // 杀掉其他子进程
+        for (int i = 0; i < PROCESS_COUNT; i++) {
+            kill(pids[i], SIGTERM);
+        }
     } else {
-        fprintf(stderr, "未找到密码\n");
-        return 2;
+        printf("未找到密码\n");
     }
+
+    // 等待所有子进程结束
+    for (int i = 0; i < PROCESS_COUNT; i++) {
+        waitpid(pids[i], NULL, 0);
+    }
+
+    return 0;
 }
