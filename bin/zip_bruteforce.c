@@ -8,38 +8,36 @@
 
 #define PASSWORD_LENGTH 6
 #define PROCESS_COUNT 4
-#define TEST_READ_BYTES 16 // 只读取前16字节
 
 int try_password(const char* zip_path, const char* password) {
     int err = 0;
     zip_t* za = zip_open(zip_path, 0, &err);
     if (!za) return 0;
-
     if (zip_set_default_password(za, password) < 0) {
         zip_close(za);
         return 0;
     }
-
     zip_int64_t num_entries = zip_get_num_entries(za, 0);
     int success = 0;
-
     for (zip_uint64_t i = 0; i < num_entries; i++) {
         struct zip_stat st;
         if (zip_stat_index(za, i, 0, &st) != 0 || st.size == 0) continue;
-
         zip_file_t* zf = zip_fopen_index(za, i, 0);
         if (!zf) continue;
-
-        char buffer[TEST_READ_BYTES];
-        zip_int64_t total_read = zip_fread(zf, buffer, sizeof(buffer));
+        char* buffer = malloc(st.size);
+        if (!buffer) {
+            zip_fclose(zf);
+            continue;
+        }
+        zip_int64_t total_read = zip_fread(zf, buffer, st.size);
         zip_fclose(zf);
-
-        if (total_read > 0) { // 成功读到数据
+        free(buffer);
+        // 必须完整读到才算成功
+        if (total_read == st.size) {
             success = 1;
             break;
         }
     }
-
     zip_close(za);
     return success;
 }
