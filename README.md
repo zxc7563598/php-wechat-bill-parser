@@ -1,124 +1,134 @@
 # hejunjie/wechat-bill-parser
 
-<div align="center">
-  <a href="./README.md">English</a>｜<a href="./README.zh-CN.md">简体中文</a>
-  <hr width="50%"/>
-</div>
+English ｜ [简体中文](./README.zh-CN.md)
 
-⚠️ This project is for learning and communication purposes only. Commercial or illegal use is strictly prohibited.
+> [!WARNING]
+> This project is for learning and communication purposes only. Commercial or illegal use is strictly prohibited.
 
-A high-performance, automated Wechat bill parser that supports automatic password cracking of compressed files and intelligent extraction of bill data. Ideal for scenarios such as bill analysis, automated bookkeeping, and personal finance tool development.
+A PHP library for automated WeChat bill parsing: cracks ZIP archive passwords and extracts bill data from Excel files. Ideal for personal finance tracking, automated bookkeeping, and financial tool development.
 
-**This project has been parsed by Zread. If you need a quick overview of the project, you can click here to view it：[Understand this project](https://zread.ai/zxc7563598/php-wechat-bill-parser)**
+**Want a quick overview?** The codebase has been parsed by [Zread](https://zread.ai/zxc7563598/php-wechat-bill-parser).
 
----
+## Features
 
-## ✨ Features
+- 🔐 **Automatic ZIP Password Cracking**: Multi-process brute-force tool written in C, delivering fast results with minimal resource usage
+- 📦 **No Manual Extraction Needed**: Handles password-protected archives — automatically decompresses and reads bill data
+- 📄 **Intelligent Data Extraction**: Parses WeChat bill Excel files to extract account nicknames and transaction details
+- 🧩 **Callback-Driven Flow Control**: Use `onPasswordFound` / `onDataParsed` callbacks to flexibly control the parsing process
+- 📬 **Email Monitoring Ready**: Combine with email auto-forwarding for fully automated bill collection and parsing
 
-- 🔐 **Automatic Password Cracking for Compressed Files**: Utilizes a native C-based multithreaded brute-force tool for extremely fast response and minimal resource usage.
+## Requirements
 
-- 📦 **No Manual Extraction Required**: Supports password-protected archives, automatically decompresses and reads bill data without manual intervention.
+- PHP >= 8.1
+- [libzip](https://libzip.org/)
+- gcc (for compiling the password cracker)
+- Composer
 
-- 📄 **Intelligent Data Extraction**: Parses Wechat bill CSV files to quickly extract account information, user names, and transaction details.
+### Install System Dependencies
 
-- 🧩 **Highly Customizable**: Offers flexible control over the parsing process via callback functions—for example, to retrieve only the password without generating HTML.
+**Ubuntu / Debian:**
 
-- 📬 **Compatible with Email Monitoring Scripts**: Can be integrated with email listeners to enable fully automated bill collection and parsing.
+```bash
+sudo apt install libzip-dev gcc
+```
 
----
+**macOS (Homebrew):**
 
-## 🛠 System Requirements
+```bash
+brew install libzip
+```
 
-This library depends on the C library [libzip](https://libzip.org/). Please install the dependency first:
+> [!NOTE]
+> macOS ships with gcc (actually clang), no extra install needed. Windows users can use this library via WSL.
 
-- Ubuntu / Debian：
-
-  ```bash
-  sudo apt install libzip-dev
-  ```
-
-- macOS (using Homebrew)：
-
-  ```bash
-  brew install libzip
-  ```
-
-- Windows users can use this via WSL, or use the precompiled `zip_bruteforce.exe`.
-
----
-
-## 📦 Installation
-
-Install this library via Composer:
+## Installation
 
 ```bash
 composer require hejunjie/wechat-bill-parser
 ```
 
----
+On first run, the library automatically compiles the C-based password cracker. Make sure gcc and libzip are properly installed.
 
-## 🚀 Usage
+## Quick Start
 
 ```php
 use Hejunjie\WechatBillParser\WechatBillParser;
 use Hejunjie\WechatBillParser\ParseOptions;
 
-$zipFile = '/path/to/微信支付账单.zip';
+$zipFile = '/path/to/wechat_bill.zip';
 
 $options = new ParseOptions($zipFile);
+
+// Called when the password is found (return false to stop further processing)
 $options->onPasswordFound = function ($password) {
-    echo "password:$password\n";
-    return true; // Returning false will terminate the subsequent parsing process.
-};
-$options->onDataParsed = function ($data) {
-    echo "name " . $data['real_name'] . PHP_EOL;
-    echo "account " . $data['account'] . PHP_EOL;
-    echo "A total of " . count($data['data']) . " records have been parsed.\n";
-    return true; // Returning false will skip the HTML generation step (under development).
+    echo "Password: $password\n";
+    return true;
 };
 
-// tips: Future versions may support directly generating a bill report as an HTML file.
+// Called when data parsing is complete (return false to skip further processing)
+$options->onDataParsed = function ($data) {
+    echo "Nickname: " . $data['account'] . PHP_EOL;
+    echo count($data['data']) . " records parsed\n";
+    return true;
+};
 
 $parser = new WechatBillParser();
 $parser->parse($options);
 ```
 
-You can also choose to retrieve only the password or only the bill data—simply implement the corresponding callback functions as needed.
+Only implement the callbacks you need. For example, if you only care about the password, just set `onPasswordFound` and leave `onDataParsed` unset.
 
----
+## Output Structure
 
-## 🧠 Purpose & Motivation
-
-I usually keep track of my bills and personal income and expenses, but the bill formats exported from WeChat and Alipay are inconsistent and often come as encrypted compressed files. Exporting, extracting, and organizing these bills every time is extremely tedious. So, I developed this tool:
-
-- Acts as middleware for personal bill processing;
-
-- Eliminates the need for manual downloading and extraction by automatically cracking compressed files and extracting data;
-
-- Can be combined with email monitoring scripts to enable automated transaction collection;
-
-- Simply forward all bill emails to a designated mailbox, and you can parse all bill data with one click—freeing your hands completely.
-
----
-
-## 🧾 Output Structure Description
-
-The `$data` passed into the `onDataParsed` callback is an array with the following structure:
+The `$data` array passed to the `onDataParsed` callback has the following structure:
 
 ```php
 [
-  'real_name' => '张三', // name
-  'account' => '18273727771', // WeChat Nickname
-  'data' => [
-      // Each line of bill record
-      ["Transaction Time", "Transaction Type", "Counterparty", "Product", "Income/Expense", "Amount (CNY)", "Payment Method", "Current Status", "Transaction ID", "Merchant Order ID", "Remarks"]
-      ...
-  ]
+    'real_name' => '',              // Real name (extraction not yet implemented)
+    'account'   => '18273727771',   // WeChat nickname
+    'data'      => [
+        // Each row is a transaction record
+        ['Transaction Time', 'Transaction Type', 'Counterparty', 'Product', 'Income/Expense', 'Amount (CNY)', 'Payment Method', 'Current Status', 'Transaction ID', 'Merchant Order ID', 'Remarks'],
+        // ...
+    ],
 ]
 ```
 
----
+## Project Structure
 
-## 📮 Contact
+```
+├── bin/                    # C source code (zip_bruteforce.c)
+├── src/                    # PHP source code
+│   ├── WechatBillParser.php     # Main parser
+│   ├── ParseOptions.php         # Parse options (callback definitions)
+│   ├── ZipPasswordCracker.php   # Password cracker (invokes the C executable)
+│   ├── CsvExtractor.php         # Excel data extraction
+│   └── Installer.php            # C tool compilation and environment detection
+├── resources/              # Compiled binary output
+└── vendor/                 # Composer dependencies
+```
 
-If you have any questions, suggestions, or cooperation interests, feel free to reach out to me via GitHub Issues.
+## FAQ
+
+<details>
+<summary>What if password cracking fails?</summary>
+
+WeChat bill ZIP passwords are typically 6-digit numbers. The cracker iterates through common password patterns. If cracking fails, make sure the ZIP file is not corrupted and is indeed a WeChat-exported bill file.
+</details>
+
+<details>
+<summary>Does it support Alipay bills?</summary>
+
+Alipay bill parsing is available in a separate repository: [php-alipay-bill-parser](https://github.com/zxc7563598/php-alipay-bill-parser).
+</details>
+
+## Motivation
+
+I keep track of my personal finances, but the bill formats exported by WeChat and Alipay are inconsistent and often arrive as encrypted ZIP archives. Manually exporting, extracting, and organizing these bills every time was tedious, so I built this tool to:
+
+- Serve as middleware for personal bill processing, eliminating manual download and extraction steps
+- Work with email monitoring scripts — forward bill emails to a designated address and parse everything automatically
+
+## Contact
+
+Questions or suggestions? Feel free to open a [GitHub Issue](https://github.com/hejunjie/wechat-bill-parser/issues).
