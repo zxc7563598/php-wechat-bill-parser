@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Hejunjie\WechatBillParser;
 
 class WechatBillParser
@@ -10,13 +12,13 @@ class WechatBillParser
         if ($options->onPasswordFound) {
             if (!($options->onPasswordFound)($password)) {
                 return;
-            };
+            }
         }
         $data = (new CsvExtractor())->extract($options->zipPath, $password);
         if ($options->onDataParsed) {
             if (!($options->onDataParsed)($data)) {
                 return;
-            };
+            }
         }
     }
 }

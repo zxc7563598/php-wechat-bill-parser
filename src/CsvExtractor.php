@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Hejunjie\WechatBillParser;
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -24,7 +26,8 @@ class CsvExtractor
         $filename = null;
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = $zip->getNameIndex($i);
-            if (preg_match('/\.xlsx?$/i', $name)) {
+            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+            if ($ext === 'xls' || $ext === 'xlsx') {
                 $filename = $name;
                 break;
             }
@@ -53,7 +56,6 @@ class CsvExtractor
         $sheet = $spreadsheet->getActiveSheet();
         $rows = [];
         $account = '';
-        $real_name = '';
         $lineNumber = 0;
         foreach ($sheet->getRowIterator() as $row) {
             $lineNumber++;
@@ -73,7 +75,7 @@ class CsvExtractor
         }
         $this->deleteDir($tempDir);
         return [
-            'real_name' => $real_name,
+            'real_name' => '',
             'account' => $account,
             'data' => $rows
         ];

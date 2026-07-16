@@ -1,19 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Hejunjie\WechatBillParser;
 
 class ParseOptions
 {
-    /** @var callable|null */
-    public $onPasswordFound = null;
+    public ?\Closure $onPasswordFound = null;
 
-    /** @var callable|null */
-    public $onDataParsed = null;
+    public ?\Closure $onDataParsed = null;
 
-    public string $zipPath;
-
-    public function __construct(string $zipPath)
-    {
-        $this->zipPath = $zipPath;
-    }
+    public function __construct(
+        public string $zipPath
+    ) {}
 }
